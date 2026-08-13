@@ -1,5 +1,51 @@
 # Working on simdvec
 
+## Read this first
+
+The required reading order before changing anything:
+
+1. [README.md](README.md) — the API, ownership, concurrency, limits; its
+   Status section is canonical for release claims.
+2. [docs/architecture.md](docs/architecture.md) — the shipped design.
+3. [docs/lld/index-and-search.md](docs/lld/index-and-search.md) — layouts,
+   the scratch protocol, the top-k path, allocation and concurrency facts.
+4. [docs/roadmap.md](docs/roadmap.md) — evaluations, not promises.
+5. [docs/verification.md](docs/verification.md) — the gates and the
+   measurement methodology.
+6. [docs/wrong.md](docs/wrong.md) — the record; read before re-proposing
+   anything it rejected.
+7. [docs/plans/2026-08-13-simdvec-production-design.md](docs/plans/2026-08-13-simdvec-production-design.md)
+   — the design evaluations (E1-E6).
+8. [docs/plans/2026-08-13-simdvec-production.md](docs/plans/2026-08-13-simdvec-production.md)
+   — the future work order, task by task.
+9. [CLAUDE.md](CLAUDE.md) — as appropriate: its header is the agent
+   preamble; the body below is shared with AGENTS.md.
+
+## Release status and gates
+
+- **Status.** The published, tagged release is **v0.1.0**, built on
+  `simd v1.2.0`. The current untagged tree uses `simd v1.20.0` (go.mod).
+  The README's Status section is canonical for release claims; when these
+  files disagree, README wins and the agent file is wrong.
+- **Roadmap is not shipped.** `docs/roadmap.md` and the plans describe
+  evaluations and future work. Nothing in them describes the current tree,
+  and nothing has shipped until a commit (and, for releases, a tag) says
+  so.
+- **Gates.** `go test ./...`, `go test -race ./...`, `go vet ./...` — run
+  bare, never piped through `tail` or anything else without `pipefail`.
+- **Docs and release gates.** A docs change touches **only .md files**
+  (check `git diff --name-only`); local links resolve; README facts are
+  source-backed (API from declarations, versions from go.mod, releases
+  from tags); AGENTS.md and CLAUDE.md stay in sync — this body is verbatim
+  in both, checked by
+  `sed -n '/^# Working on simdvec$/,$p' CLAUDE.md | diff - AGENTS.md`
+  (empty output means in sync).
+- **Ownership and concurrency.** `Add` copies and never retains or modifies
+  the caller's slice; `Search` leaves the query untouched. The index is
+  **not safe for concurrent use** — `Search` reuses the `scores` scratch
+  and `Add` mutates storage — so put external synchronization around every
+  operation on a shared index.
+
 ## Disassemble first, always
 
 Before proposing a cause for anything slow, before writing a variant, before

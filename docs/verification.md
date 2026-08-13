@@ -21,7 +21,7 @@ with a body count.
 `simdvec_test.go` pins part of the contract. The exact coverage is what is
 listed here and nothing more; behavior that is true in the source but not
 pinned by a current test is called out as such and scheduled for Task 0.1 of
-the [production plan](docs/plans/2026-08-13-simdvec-production.md):
+the [production plan](plans/2026-08-13-simdvec-production.md):
 
 - `TestMatchesNaive` — the index vs a scalar score-sort-take-k reference,
   on **rank and score within 1e-4**, across:
