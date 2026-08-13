@@ -1,125 +1,148 @@
 # simdvec
 
-**A vector index for embedding search.** Built on
-[simd.go](https://github.com/sebishogun/simd). No cgo, and the same code runs on
-amd64, arm64, riscv64, s390x, ppc64le and loong64.
+`simdvec` is a flat in-memory index for exact float32 embedding search. It stores
+vectors as one contiguous matrix and scores the full index with
+[simd.go](https://github.com/sebishogun/simd). No cgo is required.
 
-```
+Requires Go 1.25 or later. The current main branch uses
+`github.com/sebishogun/simd v1.20.0`; the published v0.1.0 release uses
+`simd v1.2.0`.
+
+```sh
 go get github.com/sebishogun/simdvec
 ```
 
 ```go
 ix := simdvec.New(768, simdvec.Cosine)
 
-for id, emb := range embeddings {
-	ix.Add(id, emb)
+for id, embedding := range embeddings {
+	if err := ix.Add(id, embedding); err != nil {
+		return err
+	}
 }
 
 hits, err := ix.Search(query, 10)
+if err != nil {
+	return err
+}
 ```
 
-## Numbers
+## API and scores
 
-Against the loop a Go program writes today — vectors in a `[][]float32`, a dot
-product each, sort. Zen 5, worse of two runs:
+`New(dim, metric)` creates an empty index and panics when `dim <= 0`. Only the
+three defined metrics are supported. `New` does not currently reject another
+`Metric` value; it falls through to dot-product scoring, but that behavior is
+not part of the API contract.
 
-| | naive | simdvec | |
-|---|---|---|---|
-| 100,000 × 768 | 66.3 ms | 3.68 ms | **18.0×** |
-| 100,000 × 384 | 47.6 ms | 2.19 ms | **21.7×** |
-| 10,000 × 768 | 5.79 ms | 0.15 ms | **38.4×** |
-| 10,000 × 384 | 3.01 ms | 0.09 ms | **32.1×** |
+| metric | `Result.Score` | ordering |
+|---|---|---|
+| `Cosine` | cosine similarity | highest first |
+| `DotProduct` | raw dot product | highest first |
+| `Euclidean` | Euclidean distance | lowest first |
 
-## Why it is faster
+`Index.Dim()` returns the configured dimension and `Index.Len()` returns the
+number of vectors. `Add` and `Search` return errors wrapping `ErrDim` when a
+vector length does not match; callers can use `errors.Is`.
 
-The obvious implementation is N dot products. That is N calls, and for a
-768-dimension vector each one is over before the call overhead is amortised.
+`Search` returns `nil, nil` for an empty index or `k <= 0`. If `k` exceeds the
+index length, every vector is returned. Results are sorted best-first according
+to the selected metric.
 
-The vectors are stored instead as one contiguous N×D matrix, so **the entire
-scan is a single matrix-vector product** — one `GemvParallelInto` across every
-core, not a hundred thousand dots. Selection is then a quickselect over the
-scores, because only k of N are wanted and N is very much larger.
+## Ownership and lifecycle
 
-That is also why `Add` copies. The layout is the optimisation.
+`Add` copies each vector into row-major storage and does not retain or modify
+the caller's slice. Cosine normalization applies to that internal copy. Search
+also leaves the query unchanged.
 
-## Metrics
+IDs are opaque strings. Duplicate IDs append separate vectors; there is no
+replace, delete, reset, serialization, or load API. The index exists only in
+memory.
 
-`Cosine`, `DotProduct` and `Euclidean`.
+`Index` is not safe for concurrent use. `Search` reuses score storage, so two
+searches cannot overlap, and neither can `Add` overlap any search or add. Put
+external synchronization around every operation when sharing an index.
 
-Cosine normalises on insert and on query, which turns the comparison into a
-plain dot product — the division happens once per vector instead of once per
-comparison. Euclidean is computed from the dot product and precomputed norms
-rather than by subtracting, so it is the same single matrix-vector product as
-the others.
+## Why the scan is fast
 
-## There is no int8 index, and that was measured
+The usual exact implementation performs one dot-product call per vector and
+then sorts all scores. `simdvec` stores an N x D matrix, so scoring is one
+`GemvParallelInto` call followed by quickselect of the requested `k` and a sort
+of only that selected set. Large scans may split across up to `GOMAXPROCS`
+workers; smaller scans stay serial when worker overhead would cost more.
 
-One was written, tested and deleted. Quantizing to int8 is a quarter of the
-memory and the recall was fine — **0.954 to 0.982 at k=10** across 128, 384 and
-768 dimensions. It is also slower, by a lot.
+Cosine vectors are normalized once on insert and the query once per search.
+Euclidean distance uses the matrix-vector dot products plus precomputed squared
+norms, then reports the actual square-root distance.
 
-Searching one query becomes an n×dim by dim×1 integer multiply, and a single
-output column is a degenerate shape for a matrix-multiply kernel whose blocking
-assumes a wide result. On 100,000 vectors of 768 dimensions:
+## Performance
 
-| | ms per query |
-|---|---|
-| int8, one query at a time | 311.7 |
-| int8, batches of 8 | 37.5 |
-| int8, batches of 32 | 1.25 |
-| int8, batches of 128 | 1.11 |
-| **float32, one query** | **0.21** |
+The v0.1.0 release compared cosine search with the hand-written implementation
+in `bench_test.go`: vectors in `[][]float32`, one scalar dot product each, a full
+sort, and the same generated inputs. These Zen 5 values are the slower of two
+release benchmark passes.
 
-Batching helps and does not rescue it. The best int8 arrangement is **five times
-slower** than the float32 scan, because `GemvParallelInto` is parallel and reads
-memory in the order the prefetcher wants, and four times the elements per
-register does not make up for either.
+| index shape | naive | `simdvec` | ratio |
+|---|---:|---:|---:|
+| 100,000 x 768 | 66.3 ms | 3.68 ms | **18.0x** |
+| 100,000 x 384 | 47.6 ms | 2.19 ms | **21.7x** |
+| 10,000 x 768 | 5.79 ms | 0.15 ms | **38.4x** |
+| 10,000 x 384 | 3.01 ms | 0.09 ms | **32.1x** |
 
-So this stores float32. If memory matters more than latency, quantize before
-inserting — the index does not need to know.
-
-## What this is not
-
-**Not approximate.** Every search scans every vector. That is the right
-structure up to a few hundred thousand embeddings, because one pass over a
-contiguous block is bound by memory bandwidth rather than arithmetic, and an
-approximate index only starts to win once the scan stops fitting in cache. Above
-that, use one.
-
-**Not persistent, and not concurrent.** The index is memory, and `Add` and
-`Search` are not safe to call at the same time. Both are deliberate for a first
-release; say if you need them.
-
-## Correctness
-
-Every result is compared against a naive implementation — score everything with
-a plain loop, sort, take k — across three metrics, four dimensions and four
-index sizes. Ranks and scores must both match.
-
+```sh
+go test -run '^$' -bench '^BenchmarkSearch$' -benchmem -count=6
 ```
+
+The exact table is a historical release measurement, not a regression gate.
+Performance is measured on amd64 only; no latency claim is made for the other
+architectures supported by `simd`.
+
+### The int8 experiment
+
+The v0.1.0 development record reports an int8 prototype with recall 0.954-0.982
+at k=10. On 100,000 vectors of 768 dimensions, its best batch measured 1.11 ms
+per query versus 0.21 ms for one float32 query. The prototype, recall fixture,
+and benchmark were deleted, so those figures are historical and cannot be
+reproduced from the current tree.
+
+The result explains the current API rather than promising a universal rule: an
+N x D by D x 1 integer multiply is a narrow shape for a blocked matrix kernel,
+while the float32 matrix-vector path is contiguous and parallel. This package
+therefore stores float32 only.
+
+## Limits
+
+Every query scans every vector. This is exact search, not HNSW, IVF, product
+quantization, or another approximate index. The included benchmark covers up to
+100,000 vectors; choose an approximate index when your measured scale or memory
+budget makes a full float32 scan unsuitable.
+
+The index has no persistence and no internal synchronization. It also does not
+validate ID uniqueness or reject zero vectors. Normalization leaves a zero
+vector unchanged, so its cosine score is 0.
+
+## Verification
+
+```sh
 go test ./...
+go test -race ./...
+go vet ./...
 ```
+
+The differential covers all three metrics, dimensions 4, 64, 384 and 768, and
+index sizes from 1 to 1,000. It compares rank and score against a scalar
+score-sort-take-k implementation, checks dimension errors and oversized `k`,
+and verifies that `Add` does not mutate its input.
 
 ## Status
 
-Early, and measured on amd64 only. The `simd` package underneath is verified on
-amd64 and arm64 NEON and under emulation elsewhere.
+The latest tagged and published release is **v0.1.0**. The current main branch
+uses `simd v1.20.0`; that dependency update is not yet tagged as a simdvec
+release. Published v0.1.0 uses `simd v1.2.0`. The API is pre-1.0.
 
-
-## The rest of the family
-
-All built on [simd.go](https://github.com/sebishogun/simd), which generates its
-kernels once from C and ships them as committed assembly for nine instruction
-sets — so none of these needs cgo, and none is amd64-only.
-
-| | |
-|---|---|
-| [**simd.go**](https://github.com/sebishogun/simd) | 463 operations over slices, bytes and text. The kernels everything else is built from. |
-| [**simdblas**](https://github.com/sebishogun/simdblas) | A BLAS backend for gonum. One `blas64.Use` call and `mat`, `stat` and `optimize` run on it. |
-| [**simdjson**](https://github.com/sebishogun/simdjson) | Structural-index JSON parsing. Faster than minio/simdjson-go, and not amd64-only. |
-| [**simdcsv**](https://github.com/sebishogun/simdcsv) | CSV reading on one vector scan per record. |
+The maintained inventory of libraries built on `simd` is in the
+[`simd` README](https://github.com/sebishogun/simd#built-on-this).
 
 ## License
 
-MIT — see [LICENSE](LICENSE). Depends on
-[simd.go](https://github.com/sebishogun/simd) (MIT).
+MIT. See [LICENSE](LICENSE). `simd` is MIT; the indirect `golang.org/x/sys`
+dependency is BSD-3-Clause.
