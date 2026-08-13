@@ -47,8 +47,13 @@ wording:
 - Invalid `Metric` values score like dot product — not contractual.
 - Platform, current tree: Go 1.25, `simd v1.20.0`, amd64/arm64/riscv64/
   s390x/ppc64le/loong64, no cgo (simdvec.go:1-3). The six-architecture
-  claim is the current tree's, not a v0.1.0 promise; the README's platform
-  caveat — measured on amd64 only — applies to both.
+  wording existed at the tag — simdvec.go is unchanged since b326499 and
+  the v0.1.0 README says it verbatim — but what stands behind the wording
+  differs by state: the dispatch and verification behind the current
+  statement come from the current simd v1.20.0 tree, while v0.1.0 depended
+  on simd v1.2.0 and its README made no verified-support promise beyond
+  the wording (its numbers are Zen 5, amd64 only). The current README's
+  platform caveat — measured on amd64 only — applies to both.
 
 ## Scope decisions
 
