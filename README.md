@@ -107,7 +107,8 @@ reproduced from the current tree.
 The result explains the current API rather than promising a universal rule: an
 N x D by D x 1 integer multiply is a narrow shape for a blocked matrix kernel,
 while the float32 matrix-vector path is contiguous and parallel. This package
-therefore stores float32 only.
+therefore stores float32 only. The full record, with the per-batch figures, is
+in [docs/wrong.md](docs/wrong.md).
 
 ## Limits
 
@@ -132,6 +133,16 @@ The differential covers all three metrics, dimensions 4, 64, 384 and 768, and
 index sizes from 1 to 1,000. It compares rank and score against a scalar
 score-sort-take-k implementation, checks dimension errors and oversized `k`,
 and verifies that `Add` does not mutate its input.
+
+## Documentation
+
+- [docs/architecture.md](docs/architecture.md) — the shipped design: layout, ownership, math, top-k, errors, concurrency, SIMD dependency.
+- [docs/lld/index-and-search.md](docs/lld/index-and-search.md) — low-level design: the scratch protocol, Add/Search/top-k walk-throughs, allocation facts.
+- [docs/roadmap.md](docs/roadmap.md) — what is evaluated next (safety, concurrency, mutation, persistence, filter, batch, scale); ANN and quantization stay non-goals unless evidence changes the scope.
+- [docs/verification.md](docs/verification.md) — the gates and the benchmark methodology.
+- [docs/wrong.md](docs/wrong.md) — the record: measurements that argued against changes, including the deleted int8 index.
+- [docs/plans/2026-08-13-simdvec-production-design.md](docs/plans/2026-08-13-simdvec-production-design.md) and [docs/plans/2026-08-13-simdvec-production.md](docs/plans/2026-08-13-simdvec-production.md) — the future production work, tests-first, with an adopt-or-record outcome per task.
+- [AGENTS.md](AGENTS.md) and [CLAUDE.md](CLAUDE.md) — the working rules for agents.
 
 ## Status
 
