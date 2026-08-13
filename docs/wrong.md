@@ -9,8 +9,9 @@ An int8 quantized index was written, tested and deleted during the v0.1.0
 development cycle. This is the rejection that explains why the shipped
 index stores float32 and nothing else.
 
-Measured, 100,000 vectors of 768 dimensions, cosine (from the v0.1.0
-development record):
+Measured, 100,000 vectors of 768 dimensions, cosine. Source of the exact
+figures: the **v0.1.0 README at the tag (b326499)**; the package comment
+(simdvec.go:23-45), unchanged since the tag, carries the same numbers:
 
     int8, one query at a time   311.7 ms/query
     int8, batches of 8           37.5 ms/query
@@ -22,7 +23,8 @@ Recall was not the problem: **0.954 to 0.982 at k=10**. The problem was
 latency — the best int8 arrangement, batched 128 queries at a time, was
 **1.11 ms vs 0.21 ms, about 5.3x slower** than one float32 query.
 
-Why, per the record: the scan becomes an n×dim by dim×1 matrix multiply,
+Why, per the v0.1.0 README: the scan becomes an n×dim by dim×1 matrix
+multiply,
 and one output column is a degenerate shape for a blocked matrix-multiply
 kernel whose blocking assumes a wide result. Batching (up to 128) narrows
 but does not close the gap, because `GemvParallelInto` is parallel and
@@ -34,7 +36,8 @@ the index stays float32, and callers who need less memory quantize before
 inserting — the index does not need to know.
 
 **Historical, not reproducible:** the prototype, its recall fixture and its
-benchmark were deleted with the rejection, so the figures above cannot be
-reproduced from the current tree. They are preserved here and in the README
-as the record of the decision, and any future quantization proposal must
-re-measure from scratch against this baseline.
+benchmark are not in the current tree — the figures survive only as text in
+the v0.1.0 README and the package comment, so they cannot be re-measured
+from the current tree. They are preserved here and in the README as the
+record of the decision, and any future quantization proposal must re-measure
+from scratch against this baseline.

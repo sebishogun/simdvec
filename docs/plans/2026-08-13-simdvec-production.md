@@ -29,7 +29,10 @@
 - Search leaves the query slice byte-identical for all three metrics (ownership).
 - Result ordering is best-first per metric and the scores are within 1e-4 of the scalar reference (the existing differential, called from the new file).
 
-**Step 2:** Run to verify fail: `go test ./...` — FAIL (nothing exists).
+**Step 2:** Run to verify **pass**: the tests pin behavior the shipped source
+already has (simdvec.go), so `go test ./...` passes immediately — the pass is
+the proof that the docs and the code agree. This task is a freeze, not a
+change.
 
 **Step 3:** Implement the tests (no library code changes — this task may pass with zero product changes; that is a success).
 
@@ -69,19 +72,32 @@
 
 ## Phase 2: Concurrency (E2)
 
-### Task 2.1: The documented contract is race-tested
+### Task 2.1: The documented contract is race-demonstrated — opt-in, never default-red
 
 **Files:**
-- Create: `concurrency_test.go`
-- Modify: `README.md`
+- Create: `concurrency_racecontract_test.go` (build tag `racecontract`)
+- Modify: `docs/verification.md`, `README.md`
 
-**Step 1:** Tests first: a test that provably races under the current contract (two goroutines Search on a shared index; `-race` must FAIL) — the test documents what "not safe" means, and passes only when run serialized or with `-race` off.
+**Step 1:** Tests first: a **build-tagged** demonstration test
+(`//go:build racecontract`) — two goroutines Search a shared index with no
+synchronization, provably racing under the current contract. The tag keeps
+it out of every default run: `go test -race ./...` stays **green**. The
+demonstration is red only when invoked deliberately:
+`go test -race -tags racecontract ./...` (a detected race is the expected,
+documented outcome — that is the test's point).
 
-**Step 2:** Add the external-sync usage example to the README (mutex around every operation).
+**Step 2:** Add the external-sync usage example to the README (mutex around
+every operation).
 
-**Step 3:** Gates: `go test -race ./...` — the race test fails by design; document the invocation (`go test -run TestConcurrentSearch -race` red, and why).
+**Step 3:** Gates: default `go test ./...` and `go test -race ./...` green
+with the tagged file present; docs/verification.md records the exact opt-in
+command and warns that it demonstrates the current unsafety.
 
-**Step 4: Evaluate.** Outcome: adopt the documented-external-sync contract as the default and record it in the README. Reject → wrong.md.
+**Step 4: Evaluate.** Outcome: adopt the documented-external-sync contract
+as the default and record it in the README; the tagged test stays as the
+standing demonstration. Adoption never makes the default suite red — only a
+future concurrency implementation (Task 2.2) replaces the demonstration
+with a normal race-safe test that passes under `-race`.
 
 ### Task 2.2: Per-search scratch (option 3), measured
 
@@ -134,9 +150,9 @@
 
 **Step 1:** Tests first: round-trip a populated index (all metrics, dims 4/768, n 1/1000) through the format and compare against the oracle; golden bytes committed for a fixed fixture; truncated file → clean error, never a panic; version-mismatch → clean error.
 
-**Step 2:** Implement save/load over the row-major matrix + norms + ids with a versioned header; endianness and architecture independence pinned by test (the matrix is plain float32 — write a big-endian byte-order test via `binary` even if the host is little-endian).
+**Step 2:** Implement save/load over the row-major matrix + norms + ids with a versioned header. Endianness is pinned by a **host-executed** byte-order test: construct the fixture bytes with an explicit byte order (`binary.LittleEndian`/`BigEndian`), so the format's byte order is defined by the test, not inherited from the host.
 
-**Step 3:** Gates: full suite, race, vet, cross-arch builds (s390x is big-endian — the format must round-trip there).
+**Step 3:** Gates: full suite, race, vet, cross-arch builds. A cross-compiled s390x (big-endian) build compiles but does not execute on the host — it motivates the no-host-order assumption rather than proving the round-trip; the host-executed byte-order test is the proof.
 
 **Step 4: Evaluate.** Persistence may legitimately stay out of scope (the design is memory-resident); if the round-trip tests expose a shape cost, record it. Adopt → commit; reject → wrong.md.
 
@@ -179,7 +195,11 @@
 
 **Step 2:** Report the numbers in the README's Limits section (or in wrong.md if they embarrass — the discipline is the same either way).
 
-**Step 3:** Memory: measure RSS at 1M×768 (3 GB of matrix); state the ceiling in the README.
+**Step 3:** Memory: the harness holds three copies at once — the source
+`vecs` (3 GB at 1M×768), the naive index's per-vector copies, and the
+simdvec matrix (3 GB) — so peak RSS is around **9 GB** plus allocator
+overhead. State the RAM prerequisite in the README's Limits section, and
+note the scale bench is behind a flag for exactly this reason.
 
 **Step 4: Evaluate.** The flat scan's standing at 1M is the input to any future ANN discussion — if the scan wins, the non-goal stays; if it collapses, the scope decision is revisited with the numbers. Record.
 

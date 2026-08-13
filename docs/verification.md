@@ -102,5 +102,9 @@ not a regression gate; new numbers are published only by this methodology.
   docs/ tree, and the agent files).
 - A docs branch touches **only .md files** — check `git diff --name-only`
   before committing.
+- AGENTS.md and CLAUDE.md declare the AGENTS body verbatim in CLAUDE.md —
+  keep them in sync. Manual check:
+  `sed -n '/^# Working on simdvec$/,$p' CLAUDE.md | diff - AGENTS.md`
+  (empty output means in sync).
 - README facts are source-backed: API surface from Go declarations, go.mod
   for the Go version and `simd` version, the tag list for release claims.

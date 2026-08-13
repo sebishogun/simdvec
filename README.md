@@ -98,8 +98,9 @@ architectures supported by `simd`.
 
 ### The int8 experiment
 
-The v0.1.0 development record reports an int8 prototype with recall 0.954-0.982
-at k=10. On 100,000 vectors of 768 dimensions, its best batch measured 1.11 ms
+The v0.1.0 README at the tag reports an int8 prototype with recall 0.954-0.982
+at k=10 (the package comment, unchanged since the tag, carries the same
+figures). On 100,000 vectors of 768 dimensions, its best batch measured 1.11 ms
 per query versus 0.21 ms for one float32 query. The prototype, recall fixture,
 and benchmark were deleted, so those figures are historical and cannot be
 reproduced from the current tree.

@@ -12,8 +12,7 @@ The product is **exact flat vector search over float32**, one
 measurement changes the case:
 
 - **ANN** (HNSW, IVF, product quantization). The flat scan is
-  bandwidth-bound and parallel; an approximate index only starts to win once
-  the scan stops fitting in cache. The evaluation gate would be a measured
+  bandwidth-bound and parallel. The evaluation gate would be a measured
   recall/latency trade-off at a scale where the flat scan demonstrably
   loses — not an assumption that it does.
 - **Quantization**. Measured once already: int8 gave recall 0.954-0.982 at

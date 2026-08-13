@@ -1,11 +1,11 @@
 # simdvec — architecture
 
-Status: describes the current tree on branch `docs/v120-documentation` —
-untagged main with the simd v1.20.0 dependency (Go 1.25). The published
-v0.1.0 tag predates it and uses simd v1.2.0; the README's Status section is
-the model for release claims. Every claim is
-backed by the source it cites; nothing here is a promise about future work
-(that lives in docs/roadmap.md and docs/plans/).
+Status: describes the current tree — untagged main with the simd v1.20.0
+dependency (Go 1.25), plus the docs-only `docs/v120-documentation` branch,
+which carries no product changes. The published v0.1.0 tag predates both
+and uses simd v1.2.0; the README's Status section is the model for release
+claims. Every claim is backed by the source it cites; nothing here is a
+promise about future work (that lives in docs/roadmap.md and docs/plans/).
 
 ## The product
 
@@ -144,7 +144,7 @@ below `gemvParallelMinWork = 2^20` elements — or with fewer than two
 workers — it runs serial (simd parallel.go:105-125). Consequence for the
 index: small scans stay serial (worker overhead would cost more), large
 scans split across cores. Scoring is memory-bandwidth-bound, not
-arithmetic-bound (simd parallel.go:102-104).
+arithmetic-bound (simd parallel.go:101-102).
 
 ## Scope and non-goals
 
