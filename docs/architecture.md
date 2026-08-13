@@ -1,7 +1,9 @@
 # simdvec — architecture
 
-Status: describes the current tree on branch `docs/v120-documentation`
-(simd v1.20.0 dependency, tag v0.1.0 published earlier). Every claim is
+Status: describes the current tree on branch `docs/v120-documentation` —
+untagged main with the simd v1.20.0 dependency (Go 1.25). The published
+v0.1.0 tag predates it and uses simd v1.2.0; the README's Status section is
+the model for release claims. Every claim is
 backed by the source it cites; nothing here is a promise about future work
 (that lives in docs/roadmap.md and docs/plans/).
 

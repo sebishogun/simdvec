@@ -32,9 +32,11 @@ scores every vector with a plain scalar loop, sorts, and takes k, and the
 index must match it on rank and score — across all three metrics, dimensions
 4, 64, 384 and 768, and index sizes 1, 5, 100 and 1,000 — with scores within
 1e-4. A change that disagrees with the oracle is wrong, whatever the
-benchmark says. Add and Search must also keep the caller's slices untouched
-(`TestAddCopies`), and dimension mismatches must be `ErrDim` errors, not
-panics.
+benchmark says. Add must keep the caller's slice untouched — `TestAddCopies`
+covers Add, and only Add. Search-query immutability (the cosine path
+normalizes a copy, simdvec.go:167) is source contract that no current test
+pins; the production plan's Task 0.1 pins it. Dimension mismatches must be
+`ErrDim` errors, not panics.
 
 ## Benchmarks
 

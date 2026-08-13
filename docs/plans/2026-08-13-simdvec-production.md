@@ -116,7 +116,7 @@
 
 **Files:** as 3.1.
 
-**Step 1:** Tests first: `Replace(id, vec)` semantics under duplicate ids (all rows? first row? error?) — decide by test; `Reset()` drops all rows and, per the LLD, keeps the matrix memory (pin that in a test: `cap(ix.data)` unchanged after reset).
+**Step 1:** Tests first: `Replace(id, vec)` semantics under duplicate ids (all rows? first row? error?) — decide by test; `Reset()` drops all rows and, per the design doc (E3), keeps the matrix memory (pin that in a test: `cap(ix.data)` unchanged after reset).
 
 **Step 2:** Implement; reset is `data = data[:0]` etc. — trivial; replace follows the 3.1 decision.
 

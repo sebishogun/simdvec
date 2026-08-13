@@ -18,7 +18,10 @@ with a body count.
 
 ## Correctness coverage (the differential oracle)
 
-`simdvec_test.go` pins the contract:
+`simdvec_test.go` pins part of the contract. The exact coverage is what is
+listed here and nothing more; behavior that is true in the source but not
+pinned by a current test is called out as such and scheduled for Task 0.1 of
+the [production plan](docs/plans/2026-08-13-simdvec-production.md):
 
 - `TestMatchesNaive` — the index vs a scalar score-sort-take-k reference,
   on **rank and score within 1e-4**, across:
@@ -26,16 +29,21 @@ with a body count.
   - dimensions 4, 64, 384, 768;
   - index sizes 1, 5, 100, 1,000.
 - `TestDimensionMismatch` — Add and Search return `ErrDim`-wrapped errors
-  on wrong-length vectors; nothing is appended on the Add error path.
+  on wrong-length vectors. That the failed Add appends nothing is
+  implementation behavior (the length check precedes all mutation,
+  simdvec.go:135), not yet pinned by a test; plan Task 0.1 pins it.
 - `TestAddCopies` — Add leaves the caller's slice byte-identical (Cosine
   normalization happens on the internal copy).
-- `TestEmptyAndOversizedK` — empty index and `k <= 0` return `nil, nil`;
-  `k > n` is clamped and returns every vector.
+- `TestEmptyAndOversizedK` — an empty index returns `nil, nil`; `k > n` is
+  clamped and returns every vector. `k <= 0` returning `nil, nil` is
+  implementation behavior (simdvec.go:159), not covered by a current test;
+  plan Task 0.1 pins it.
 
 `TestMatchesNaive` is the definition of correct: a change that disagrees
-with the oracle is wrong regardless of benchmark results. The oracle's
-coverage of ties is deliberately absent — tie order is unspecified and must
-never be pinned.
+with the oracle is wrong regardless of benchmark results. The oracle does
+not pin tie order — today it is unspecified (quickselect + unstable sort);
+whether to pin it is evaluated in the production plan (Task 1.2), not
+decided here.
 
 ## Cross-architecture
 

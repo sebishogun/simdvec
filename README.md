@@ -79,7 +79,7 @@ norms, then reports the actual square-root distance.
 The v0.1.0 release compared cosine search with the hand-written implementation
 in `bench_test.go`: vectors in `[][]float32`, one scalar dot product each, a full
 sort, and the same generated inputs. These Zen 5 values are the slower of two
-release benchmark passes.
+benchmark runs.
 
 | index shape | naive | `simdvec` | ratio |
 |---|---:|---:|---:|

@@ -7,10 +7,16 @@ ends in adoption or a docs/wrong.md rejection.
 
 ## Goal
 
-Take the shipped exact flat float32 index (tag v0.1.0, simd v1.20.0) through
-a production pass: evaluate the candidate extensions against the package's
-one idea — the whole scan is one matrix-vector product — and keep or reject
-each on measured evidence, never on taste.
+Take the exact flat float32 index through a production pass: evaluate the
+candidate extensions against the package's one idea — the whole scan is one
+matrix-vector product — and keep or reject each on measured evidence, never
+on taste.
+
+Release status follows the README's Status section, the model for release
+claims: the published **v0.1.0 tag** uses `simd v1.2.0`; the **current
+untagged main** uses `simd v1.20.0` (Go 1.25). The product-as-shipped
+wording below describes the current tree; claims about the published
+release stay with the tag.
 
 ## Audience
 
@@ -19,6 +25,13 @@ Secondary: contributors deciding what to build next, and maintainers
 checking that a change preserves the contract.
 
 ## The product as shipped (source-backed)
+
+Two states exist, per the README Status model: the published **v0.1.0 tag**
+(b326499, `simd v1.2.0`) and the **current untagged main** (`simd v1.20.0`,
+Go 1.25). `simdvec.go` is unchanged since the tag — the only product-adjacent
+changes since are the dependency bump (815876a) and docs — so the bullets
+below describe both, with the current tree's dependency and platform
+wording:
 
 - `New(dim, metric)` panics on `dim <= 0`; `Dim`, `Len`, `Add`, `Search`,
   `Result`, `Metric` (Cosine/DotProduct/Euclidean), `ErrDim` is the whole
@@ -32,8 +45,10 @@ checking that a change preserves the contract.
   concurrent use.
 - No persistence, delete, replace, reset, filter, batch, or ANN surface.
 - Invalid `Metric` values score like dot product — not contractual.
-- Platform: Go 1.25, simd v1.20.0, amd64/arm64/riscv64/s390x/ppc64le/
-  loong64, no cgo.
+- Platform, current tree: Go 1.25, `simd v1.20.0`, amd64/arm64/riscv64/
+  s390x/ppc64le/loong64, no cgo (simdvec.go:1-3). The six-architecture
+  claim is the current tree's, not a v0.1.0 promise; the README's platform
+  caveat — measured on amd64 only — applies to both.
 
 ## Scope decisions
 
