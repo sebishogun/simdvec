@@ -114,6 +114,12 @@ type Index struct {
 	filtered  []int
 	gather    []float32
 	subScores []float32
+
+	// Scratch for batch search: the packed query block, its N×B scores, and
+	// one gathered column.
+	qblock      []float32
+	blockScores []float32
+	colScores   []float32
 }
 
 // New returns an empty index for vectors of the given dimension.

@@ -184,3 +184,36 @@ func BenchmarkFilterStrategies(b *testing.B) {
 		})
 	}
 }
+
+// B serial matrix-vector products against one matrix product. The product
+// should win by reusing each row of the matrix across the whole block instead
+// of re-reading it B times -- but the scan is memory-bound, and a blocked
+// kernel that assumes a wide result can lose when the block is narrow.
+func BenchmarkBatchStrategies(b *testing.B) {
+	const dim = 768
+	const n = 100000
+	r := rand.New(rand.NewPCG(6, 7))
+	ix := New(dim, Cosine)
+	for i, v := range randVecs(r, n, dim) {
+		if err := ix.Add(itoa(i), append([]float32(nil), v...)); err != nil {
+			b.Fatal(err)
+		}
+	}
+	for _, bs := range []int{2, 8, 32} {
+		queries := randVecs(r, bs, dim)
+		b.Run(fmt.Sprintf("serial/B=%d", bs), func(b *testing.B) {
+			for i := 0; i < b.N; i++ {
+				if _, err := ix.batchSerial(queries, 10); err != nil {
+					b.Fatal(err)
+				}
+			}
+		})
+		b.Run(fmt.Sprintf("matmul/B=%d", bs), func(b *testing.B) {
+			for i := 0; i < b.N; i++ {
+				if _, err := ix.batchMatMul(queries, 10); err != nil {
+					b.Fatal(err)
+				}
+			}
+		})
+	}
+}

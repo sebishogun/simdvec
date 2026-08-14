@@ -102,3 +102,35 @@ The shape is worth stating: compaction at 100% costs 6.2x masking, so a
 "gather then score" design that looked obviously better for filtering is
 catastrophic for the unfiltered case. The copy is the whole cost, and it
 scales with what is admitted while the scan does not.
+
+## Batch search: the matrix product loses below a block of eight
+
+**The question.** B queries can be B independent matrix-vector products,
+or one N×D by D×B matrix product. The product should win by reusing each
+row of the matrix across the whole block instead of re-reading it B times.
+The plan asked for both, because the scan is memory-bound rather than
+arithmetic-bound and a blocked kernel that assumes a wide result can lose
+on a narrow one.
+
+**Measured**, 100,000 rows x 768 dimensions, Cosine:
+
+    B      serial      one product     per query, serial -> product
+     2    7.39 ms      21.82 ms        3.70 ms -> 10.91 ms   product 3.0x worse
+     8   29.62 ms      26.89 ms        3.70 ms ->  3.36 ms   product 1.10x better
+    32  120.93 ms      44.17 ms        3.78 ms ->  1.38 ms   product 2.74x better
+
+The serial cost per query is flat, as it must be: each query is an
+independent scan of the same matrix. The product's per-query cost falls
+from 10.9 ms to 1.38 ms as the block widens, which is the row reuse
+arriving.
+
+**Consequence.** `SearchBatch` takes the product from a block of eight
+upward and the serial loop below it. Both are kept and both are tested
+against the single-query search, at batch sizes on each side of the
+threshold, because a threshold choosing between two implementations leaves
+one of them unexercised otherwise.
+
+The B=2 row is the finding worth keeping: the product is **three times
+worse** there. A design that reached for the matrix kernel because batching
+"obviously" amortises the scan would have made small batches -- which is
+most batches, in a request-shaped workload -- three times slower.
