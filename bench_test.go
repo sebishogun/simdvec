@@ -86,3 +86,59 @@ func BenchmarkSearch(b *testing.B) {
 		}
 	}
 }
+
+// Delete compacts the matrix rather than tombstoning, because the contiguous
+// N×D layout is what makes a search one matrix-vector product. This measures
+// what that costs at scale: the compaction is a copy of the rows after the
+// first removal, and the search that follows is unchanged in shape.
+func BenchmarkDelete(b *testing.B) {
+	const dim = 128
+	build := func(n int) (*Index, []string) {
+		ix := New(dim, Cosine)
+		ids := make([]string, n)
+		v := make([]float32, dim)
+		for i := 0; i < n; i++ {
+			for j := range v {
+				v[j] = float32((i*j)%101) / 101
+			}
+			ids[i] = "v" + itoa(i)
+			if err := ix.Add(ids[i], v); err != nil {
+				b.Fatal(err)
+			}
+		}
+		return ix, ids
+	}
+	for _, n := range []int{10000, 100000} {
+		b.Run("first-of-"+itoa(n), func(b *testing.B) {
+			for i := 0; i < b.N; i++ {
+				b.StopTimer()
+				ix, ids := build(n)
+				b.StartTimer()
+				// The worst case: removing the first row moves every other.
+				if got := ix.Delete(ids[0]); got != 1 {
+					b.Fatalf("removed %d", got)
+				}
+			}
+		})
+		b.Run("last-of-"+itoa(n), func(b *testing.B) {
+			for i := 0; i < b.N; i++ {
+				b.StopTimer()
+				ix, ids := build(n)
+				b.StartTimer()
+				// The best case: nothing after it to move.
+				if got := ix.Delete(ids[n-1]); got != 1 {
+					b.Fatalf("removed %d", got)
+				}
+			}
+		})
+		b.Run("absent-of-"+itoa(n), func(b *testing.B) {
+			ix, _ := build(n)
+			b.ResetTimer()
+			for i := 0; i < b.N; i++ {
+				if got := ix.Delete("nothere"); got != 0 {
+					b.Fatalf("removed %d", got)
+				}
+			}
+		})
+	}
+}

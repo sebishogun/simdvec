@@ -41,3 +41,30 @@ the v0.1.0 README and the package comment, so they cannot be re-measured
 from the current tree. They are preserved here and in the README as the
 record of the decision, and any future quantization proposal must re-measure
 from scratch against this baseline.
+
+## Delete compacts rather than tombstones, and the cost says why
+
+**The question the plan asked.** Delete could compact the matrix -- an
+O(n·dim) copy of the rows after the first removal -- or leave tombstones
+and skip them at search time. The contiguous N×D matrix is what makes a
+search one matrix-vector product, so the plan called a tombstone
+"presumed guilty until measured".
+
+**Measured.** Delete, dim 128:
+
+    n=10,000    first row  211 us   last row  25.9 us   absent   6.0 us
+    n=100,000   first row  2.47 ms  last row   253 us   absent  97.3 us
+
+Linear in the number of rows after the removal, as expected. For
+comparison, one search at n=100,000 and dim=384 costs 2.33 ms.
+
+**Consequence.** A worst-case delete costs about what a single search
+costs, once, and every search afterwards runs at full speed on an
+unbroken matrix. A tombstone scheme would move that cost onto every
+search, permanently, in exchange for making the rare operation cheap.
+That is the wrong way round for an index that is searched far more often
+than it is edited, so Delete compacts.
+
+The absent-id case is the one worth noting: 97 us at 100,000 rows, which
+is the scan for a matching id and no copying at all. Deleting something
+that is not there costs a walk of the id slice and nothing else.
