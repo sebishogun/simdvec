@@ -134,3 +134,48 @@ The B=2 row is the finding worth keeping: the product is **three times
 worse** there. A design that reached for the matrix kernel because batching
 "obviously" amortises the scan would have made small batches -- which is
 most batches, in a request-shaped workload -- three times slower.
+
+## The flat scan at 1M: linear, and at memory bandwidth
+
+**The question the plan asked.** How does the flat scan stand at 1M
+vectors? The answer is the input to any future discussion of an
+approximate index, which is a stated non-goal unless evidence changes it.
+
+**Measured**, dim 768, Cosine, one search of k=10:
+
+    n            search     matrix      ns per row    GB/s scanned
+      200,000    7.44 ms    0.57 GB       37.2            77
+      500,000   18.00 ms    1.43 GB       36.0            79
+    1,000,000   38.49 ms    2.86 GB       38.5            74
+
+The cost per row is flat across a fivefold range, so the scan is linear
+with no cliff -- and at roughly 75 GB/s it is running at this machine's
+memory bandwidth. That is the number that matters: the scan is not slow
+because of how it is written, it is slow because 2.86 GB has to be read.
+No amount of kernel work moves it.
+
+**Consequence.** The non-goal stands, on evidence rather than by default.
+An approximate index at this scale would buy latency by reading less
+memory, not by computing better, and the trade it asks for -- approximate
+answers -- is the thing this package exists not to make. A caller who
+needs sub-millisecond answers over a million vectors needs a different
+data structure, and should be told so plainly rather than sold a flat scan
+with a smaller constant.
+
+**A second finding, unasked for.** Heap after building the 1M index is
+8.0 GB against a 2.86 GB matrix -- 2.8x. Rows are appended one at a time,
+so the matrix doubles repeatedly and the allocator holds the growth
+history. There is no way for a caller who knows the final size to say so;
+a Reserve or a New-with-capacity would cut peak memory by most of that.
+Recorded rather than built, because the API surface is a decision and this
+entry is a measurement.
+
+The plan budgeted about 9 GB of peak RSS for this measurement on the
+assumption the harness holds three copies of the corpus. The harness
+committed here holds one -- vectors are generated straight into the index
+and dropped -- so it needs 3 GB and runs on an ordinary machine.
+
+**Provenance.** Wall-clock, on a machine at load average 4. The linear
+shape and the bandwidth figure are robust to that; the absolute
+milliseconds are not, and should be re-measured quiet before any of them
+is quoted as a headline.
