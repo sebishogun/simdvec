@@ -104,6 +104,39 @@ large index n ≫ k (simdvec.go:202-205).
   index that answered a different question than the caller asked, with
   nothing at the call site to say so.
 
+
+## Persistence
+
+An index is a matrix, one norm per row and one id per row, so the file is
+those three behind a versioned header: magic `SIMDVEC1`, a format version,
+the metric, the dimension and the row count, then the matrix, then the
+norms, then length-prefixed ids.
+
+Two decisions are stated because both are the kind that are made once and
+lived with:
+
+**Byte order is little-endian by decision, not inherited from the host.**
+A format that writes host order produces files another machine misreads
+silently -- the floats come back as different floats, not as an error --
+and the test that would catch it cannot run on the machine that wrote
+them. So the encoder names the order and `TestPersistByteOrderIsPinned`
+builds the same bytes by hand and requires them to match.
+
+**Ids are length-prefixed**, so an id may hold a NUL or invalid UTF-8. A
+terminator-based encoding would truncate them and lose rows.
+
+What is written is what the index holds, which under Cosine means the
+normalised vectors: those are what `Add` stored, and reproducing the
+caller's originals would need a copy the index deliberately does not keep.
+
+A load builds the new contents beside the old and swaps them in only once
+the whole file has been read, so a truncated or corrupt file leaves the
+index exactly as it was. `TestPersistTruncationIsCleanAtEveryLength` cuts
+a valid file at every byte offset and requires an error and an untouched
+index at each one. Header fields are bounded before anything is sized from
+them: a dimension or row count a corrupt file claims is refused rather
+than allocated.
+
 ## Scratch and concurrency
 
 `ix.scores` is one buffer doing two jobs in `Search` (simdvec.go:166-180):
