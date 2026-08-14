@@ -30,7 +30,7 @@ methodology in docs/verification.md first.
 
 Candidate changes, none adopted:
 
-- `New` rejecting unknown `Metric` values (today they score like dot
+- ~~`New` rejecting unknown `Metric` values~~ — **done**; they used to score like dot
   product, explicitly not contractual).
 - Pinning tie order in `Result` (today unspecified: quickselect +
   unstable sort).

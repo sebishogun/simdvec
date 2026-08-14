@@ -96,10 +96,13 @@ large index n ≫ k (simdvec.go:202-205).
   panic.
 - `Search` on an empty index, or with `k <= 0`, returns `nil, nil`
   (simdvec.go:158-160). `k > n` is clamped to n (simdvec.go:161-163).
-- An unknown `Metric` value is **not rejected** by `New`; only Cosine and
-  Euclidean take special paths, so an invalid metric scores like a dot
-  product. That fallback is not part of the contract (`Metric.String`
-  reports "unknown"), and the README says so.
+- An unknown `Metric` value is **rejected** by `New`, which panics as it
+  does for a non-positive dimension. Both are programming errors that no
+  run-time input can produce, and both are caught at construction rather
+  than at the first search. Previously an unknown metric fell through and
+  scored like a dot product, so a typo in a constant produced a working
+  index that answered a different question than the caller asked, with
+  nothing at the call site to say so.
 
 ## Scratch and concurrency
 

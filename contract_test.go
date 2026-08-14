@@ -30,13 +30,19 @@ func TestContractNewRejectsNonPositiveDim(t *testing.T) {
 	mustPanic(t, "New(-1)", func() { New(-1, Cosine) })
 }
 
-// An unknown metric does not panic today. Whether it should is Task 1.1's
-// question; this records what ships now so the change is visible when it
-// happens.
-func TestContractNewAcceptsUnknownMetricToday(t *testing.T) {
-	ix := New(4, Metric(99))
-	if ix == nil {
-		t.Fatal("New returned nil")
+// An unknown metric is rejected at construction, for the same reason a
+// non-positive dimension is: it is a programming error, it cannot come from
+// run-time input, and the alternative was an index that silently answered a
+// different question than the caller asked.
+func TestContractNewRejectsUnknownMetric(t *testing.T) {
+	for _, m := range []Metric{Metric(99), Metric(-1), Metric(3)} {
+		mustPanic(t, "New with metric "+m.String(), func() { New(4, m) })
+	}
+	// The three real ones are accepted.
+	for _, m := range []Metric{Cosine, DotProduct, Euclidean} {
+		if ix := New(4, m); ix == nil {
+			t.Fatalf("New rejected %v", m)
+		}
 	}
 	if got := Metric(99).String(); got != "unknown" {
 		t.Fatalf("Metric(99).String() = %q", got)

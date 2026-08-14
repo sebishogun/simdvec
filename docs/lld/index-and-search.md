@@ -30,9 +30,10 @@ New(dim, metric):
     return &Index{dim, metric}       // no allocation beyond the struct
 ```
 
-No data buffers are allocated until the first Add. The metric is not
-validated: an unknown value takes no special path in Add/Search, so it
-behaves like DotProduct — explicitly not contractual.
+No data buffers are allocated until the first Add. The metric is
+validated at construction: an unrecognised value panics, alongside the
+non-positive-dimension check, rather than falling through to DotProduct's
+path as it used to.
 
 ## Add
 

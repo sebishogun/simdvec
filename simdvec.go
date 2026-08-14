@@ -80,6 +80,8 @@ func (m Metric) String() string {
 	case Euclidean:
 		return "euclidean"
 	}
+	// Reachable only for a Metric value New would have rejected, which leaves
+	// printing one in a test or a log as the case this serves.
 	return "unknown"
 }
 
@@ -109,9 +111,23 @@ type Index struct {
 }
 
 // New returns an empty index for vectors of the given dimension.
+//
+// It panics on a non-positive dimension or an unrecognised metric. Both are
+// programming errors that no run-time input can cause, and both are caught at
+// construction rather than at the first search -- which is the whole reason to
+// panic here instead of returning an error nobody checks at start-up.
+//
+// The unrecognised metric used to fall through and score like a dot product.
+// Nothing said so at the call site, so a typo in a Metric constant produced a
+// working index that answered the wrong question, silently and forever.
 func New(dim int, metric Metric) *Index {
 	if dim <= 0 {
 		panic("simdvec: dimension must be positive")
+	}
+	switch metric {
+	case Cosine, DotProduct, Euclidean:
+	default:
+		panic("simdvec: unknown metric")
 	}
 	return &Index{dim: dim, metric: metric}
 }
