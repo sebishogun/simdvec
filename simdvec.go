@@ -224,7 +224,21 @@ func (ix *Index) topK(scores []float32, k int, ascending bool) []Result {
 	for i := range idx {
 		idx[i] = i
 	}
+	// A total order, not just a score comparison. Ties broken by row index
+	// make both the selection and the ordering predictable: without it,
+	// twelve identical vectors with k=5 returned rows 5, 6, 0, 7, 2, and a
+	// tie spanning the k boundary returned the second and third of three
+	// equal top scores rather than the first two. Which rows come back is a
+	// harder problem than what order they come back in, and a partial
+	// selection cannot be fixed by a stable sort afterwards -- by then the
+	// wrong rows have been chosen.
+	//
+	// The extra comparison runs only when the scores are equal, so a search
+	// over distinct scores pays for one branch that is never taken.
 	cmp := func(a, b int) bool {
+		if scores[a] == scores[b] {
+			return a < b
+		}
 		if ascending {
 			return scores[a] < scores[b]
 		}
@@ -280,9 +294,4 @@ func partition(idx []int, lo, hi int, less func(a, b int) bool) int {
 	}
 	idx[store], idx[hi] = idx[hi], idx[store]
 	return store
-}
-
-// sortResults orders a small selected set.
-func sortResults(sel []int, less func(a, b int) bool) {
-	sort.Slice(sel, func(a, b int) bool { return less(sel[a], sel[b]) })
 }

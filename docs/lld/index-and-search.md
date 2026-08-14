@@ -123,10 +123,21 @@ topK(scores, k, ascending):
 
 `quickSelect` is the standard partition-based selection with a
 **median-of-three** pivot (`lo`, `mid`, `hi`) so sorted input does not
-degenerate to quadratic (simdvec.go:245-255). Partitioning moves equal
-scores arbitrarily; the final `sort.Slice` is unstable. **Tie order is
-unspecified** — the differential oracle only ever compares against
-exact-score random data, and no test pins tie order.
+degenerate to quadratic. Partitioning moves equal scores arbitrarily and
+`sort.Slice` is unstable, so the comparator is a **total order**: ties
+break on the row index, which makes the answer insertion-ordered.
+
+That is a selection property before it is an ordering one. With ties
+spanning the k boundary, *which* rows are returned was arbitrary — three
+equal top scores with k=2 gave the second and third, not the first two —
+and no stable sort afterwards can repair that, because by then the wrong
+rows have been chosen. Twelve identical vectors with k=5 returned rows
+5, 6, 0, 7, 2.
+
+The extra comparison runs only when two scores are equal. Measured on the
+search benchmark: **+0.036% and +0.004% instructions** over two runs,
+which is indistinguishable — the search is the matrix-vector product, and
+the selection is a rounding error beside it.
 
 Complexity per search: O(n) selection + O(k log k) final sort + O(n)
 `idx` allocation.

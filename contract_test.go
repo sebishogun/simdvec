@@ -267,3 +267,102 @@ func itoa(n int) string {
 	}
 	return string(b[i:])
 }
+
+// Ties resolve by insertion order, in the selection as well as the ordering.
+//
+// Before this, twelve identical vectors with k=5 returned rows 5, 6, 0, 7, 2:
+// deterministic for a given input, but nothing a caller could predict, and
+// changing an unrelated part of the index moved it. Worse than the ordering
+// was the selection -- with ties spanning the k boundary, *which* rows came
+// back was arbitrary, so a partial tie over three equal top scores returned
+// the second and third rather than the first and second.
+func TestContractTiesResolveByInsertionOrder(t *testing.T) {
+	t.Run("all tied", func(t *testing.T) {
+		ix := New(4, DotProduct)
+		for i := 0; i < 12; i++ {
+			if err := ix.Add(itoa(i), []float32{1, 0, 0, 0}); err != nil {
+				t.Fatal(err)
+			}
+		}
+		got, err := ix.Search([]float32{1, 0, 0, 0}, 5)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for i, r := range got {
+			if r.ID != itoa(i) {
+				t.Fatalf("result %d is %s, want %s (got %s)", i, r.ID, itoa(i), ids(got))
+			}
+		}
+	})
+	t.Run("tie spanning the k boundary", func(t *testing.T) {
+		ix := New(4, DotProduct)
+		for i := 0; i < 3; i++ {
+			if err := ix.Add("hi"+itoa(i), []float32{2, 0, 0, 0}); err != nil {
+				t.Fatal(err)
+			}
+		}
+		for i := 0; i < 5; i++ {
+			if err := ix.Add("lo"+itoa(i), []float32{1, 0, 0, 0}); err != nil {
+				t.Fatal(err)
+			}
+		}
+		got, err := ix.Search([]float32{1, 0, 0, 0}, 2)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got[0].ID != "hi0" || got[1].ID != "hi1" {
+			t.Fatalf("got %s, want hi0 hi1", ids(got))
+		}
+	})
+	t.Run("euclidean ties too", func(t *testing.T) {
+		ix := New(4, Euclidean)
+		for i := 0; i < 6; i++ {
+			if err := ix.Add(itoa(i), []float32{1, 1, 1, 1}); err != nil {
+				t.Fatal(err)
+			}
+		}
+		got, err := ix.Search([]float32{1, 1, 1, 1}, 3)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for i, r := range got {
+			if r.ID != itoa(i) {
+				t.Fatalf("euclidean result %d is %s, want %s", i, r.ID, itoa(i))
+			}
+		}
+	})
+	t.Run("stable across repeated searches", func(t *testing.T) {
+		ix := New(4, Cosine)
+		for i := 0; i < 20; i++ {
+			if err := ix.Add(itoa(i), []float32{1, 0, 0, 0}); err != nil {
+				t.Fatal(err)
+			}
+		}
+		first := ids(mustSearch(t, ix, []float32{1, 0, 0, 0}, 7))
+		for run := 0; run < 5; run++ {
+			if got := ids(mustSearch(t, ix, []float32{1, 0, 0, 0}, 7)); got != first {
+				t.Fatalf("run %d returned %s, first run %s", run, got, first)
+			}
+		}
+	})
+}
+
+func mustSearch(t *testing.T, ix *Index, q []float32, k int) []Result {
+	t.Helper()
+	got, err := ix.Search(q, k)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return got
+}
+
+func ids(rs []Result) string {
+	s := ""
+	for i, r := range rs {
+		if i > 0 {
+			s += " "
+		}
+		s += r.ID
+	}
+	return s
+}
