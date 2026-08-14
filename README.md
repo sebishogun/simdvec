@@ -29,10 +29,10 @@ if err != nil {
 
 ## API and scores
 
-`New(dim, metric)` creates an empty index and panics when `dim <= 0`. Only the
-three defined metrics are supported. `New` does not currently reject another
-`Metric` value; it falls through to dot-product scoring, but that behavior is
-not part of the API contract.
+`New(dim, metric)` creates an empty index. It panics on a non-positive
+dimension and on an unrecognised metric: both are programming errors that no
+run-time input can cause, and both are caught at construction rather than at
+the first search.
 
 | metric | `Result.Score` | ordering |
 |---|---|---|
@@ -46,7 +46,20 @@ vector length does not match; callers can use `errors.Is`.
 
 `Search` returns `nil, nil` for an empty index or `k <= 0`. If `k` exceeds the
 index length, every vector is returned. Results are sorted best-first according
-to the selected metric.
+to the selected metric, and **ties resolve by insertion order** -- in the
+selection as well as the ordering, which matters when equal scores span the k
+boundary.
+
+`SearchFiltered(query, k, filter)` searches among the rows a predicate admits.
+It scores the whole matrix and ignores the rejected rows, or gathers the
+admitted rows and scores only those, choosing by selectivity: measured at
+100k x 768, gathering is 18.9x faster at 1% admitted, level at 10%, and 6.2x
+slower at 100%.
+
+`SearchBatch(queries, k)` answers many queries at once. Below a block of eight
+it runs independent searches; from eight upward it uses one matrix product,
+which is 2.74x faster at 32 queries and 3x *slower* at two. Each result is
+what `Search` would have returned for that query alone.
 
 ## Ownership and lifecycle
 
@@ -54,9 +67,20 @@ to the selected metric.
 the caller's slice. Cosine normalization applies to that internal copy. Search
 also leaves the query unchanged.
 
-IDs are opaque strings. Duplicate IDs append separate vectors; there is no
-replace, delete, reset, serialization, or load API. The index exists only in
-memory.
+IDs are opaque strings, and duplicate IDs append separate vectors.
+
+`Delete(id)` removes every row with that id and returns how many; `Replace(id,
+vec)` updates every such row and returns how many; both act on all matching
+rows, because a mutation touching only the first would mean something
+different depending on data the caller cannot see. Deleting or replacing an id
+that is not there is a no-op returning zero, not an error. `Reset()` empties
+the index and keeps the matrix memory, so refilling it allocates nothing.
+
+`WriteTo`/`ReadFrom` and `Load` save and restore an index. The format is
+little-endian by decision rather than by host, and ids are length-prefixed so
+one may contain any bytes. A truncated file is an error and leaves the index
+untouched -- the new contents are built beside the old and swapped in only
+once the whole file has been read.
 
 `Index` is not safe for concurrent use. `Search` reuses score storage, so two
 searches cannot overlap, and neither can `Add` overlap any search or add. Put

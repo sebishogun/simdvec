@@ -26,7 +26,7 @@ methodology in docs/verification.md first.
 
 ## Evaluations
 
-### Safety (API contract hardening)
+### Safety (API contract hardening) — **shipped**
 
 Candidate changes, none adopted:
 
@@ -39,7 +39,7 @@ Candidate changes, none adopted:
 Gate: a contract test asserting the chosen behavior, then README/LLD
 sync. Outcome recorded either way.
 
-### Concurrency
+### Concurrency — **contract demonstrated; per-search scratch still open**
 
 Today the index is not safe for concurrent use (shared `scores` scratch,
 `Add` appends). Options to evaluate, in order of cost:
@@ -53,7 +53,7 @@ Gate: `-race` clean under the chosen contract, then an interleaved
 benchmark A/B — the noise-floor methodology decides whether option 3's
 allocations are worth the concurrency it buys.
 
-### Mutation: delete / replace / reset
+### Mutation: delete / replace / reset — **shipped**
 
 None exist. The design questions are semantic, not just mechanical:
 
@@ -67,7 +67,7 @@ None exist. The design questions are semantic, not just mechanical:
 Gate: differential oracle still passes after the mutation; top-k semantics
 after delete are pinned by test. Rejected shapes are recorded.
 
-### Persistence
+### Persistence — **shipped**
 
 No save/load. The natural unit is the row-major matrix + norms + ids; the
 questions are format versioning, endianness/architecture independence, and
@@ -77,7 +77,7 @@ design; persistence would not change the query path.
 Gate: a golden-file round-trip test + a truncation/reopen test. Not
 promised.
 
-### Filter and batch
+### Filter and batch — **shipped**
 
 - **Filter**: predicate search (e.g. metadata pre-filter before scoring)
   changes the Gemv shape — masked rows would need zeroing or a compacted
@@ -88,7 +88,7 @@ promised.
   single-query Gemv; the same measurement discipline applies before any
   batch API.
 
-### Scale
+### Scale — **measured**
 
 The included benchmark covers up to 100,000 vectors (bench_test.go). The
 flat scan is memory-bound; the honest ceiling is "fits in RAM and the
@@ -106,3 +106,28 @@ evaluation, and the int8 trade-off above is its standing answer.
   instructions:u,cycles:u` and the disassembly.
 - Releases keep the README's performance table historical — a release
   measurement, not a regression gate.
+
+
+## What shipped, and what each evaluation decided
+
+Every section above that says **shipped** was decided by a measurement or a
+test rather than by preference. The short version, with the numbers that
+settled each one:
+
+| evaluation | decision | what decided it |
+|---|---|---|
+| unknown `Metric` | panic at construction | symmetry with the `dim <= 0` panic; the old fallback made a typo produce an index that answered a different question |
+| tie order | insertion order, in selection and ordering | +0.036% instructions, so the cost did not argue against it; twelve identical vectors previously returned rows 5, 6, 0, 7, 2 |
+| concurrency | documented external sync, demonstrated by a build-tagged race test | the default `-race` run stays green; a suite red on purpose trains people to ignore it |
+| delete mechanics | compact, not tombstone | a worst-case delete at 100k costs 2.47 ms, about one search, paid once; a tombstone taxes every search forever |
+| delete/replace under duplicate ids | act on every matching row | otherwise one delete is not enough and nothing says how many is |
+| persistence | little-endian, length-prefixed ids, atomic load | byte order pinned by a hand-built test, because a host-order format misreads as different floats rather than as an error |
+| filtered search | both shapes, threshold at a tenth | 18.9x for gathering at 1% admitted, 6.2x against it at 100% |
+| batch search | both shapes, threshold at eight | the matrix product is 3x *worse* at two queries and 2.74x better at 32 |
+| scale at 1M | the flat-scan non-goal stands | 38.5 ms at 1M x 768, linear, at ~75 GB/s — memory bandwidth, not implementation |
+
+Two findings are recorded without being acted on, because each is an API
+decision rather than a measurement: `Result` carries no row index, so with
+duplicate ids a caller cannot tell which row matched; and building a 1M index
+leaves the heap at 2.8x the matrix size, because rows append one at a time and
+no caller can declare the final size up front.
