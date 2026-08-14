@@ -60,7 +60,28 @@ memory.
 
 `Index` is not safe for concurrent use. `Search` reuses score storage, so two
 searches cannot overlap, and neither can `Add` overlap any search or add. Put
-external synchronization around every operation when sharing an index.
+external synchronization around every operation when sharing an index:
+
+```go
+var mu sync.Mutex
+
+// Every operation, not only the writes: two concurrent Searches race on the
+// shared score buffer just as a Search and an Add race on the matrix.
+mu.Lock()
+hits, err := ix.Search(query, 10)
+mu.Unlock()
+```
+
+That contract is demonstrated rather than asserted. A build-tagged test runs
+four goroutines searching one index with no lock, and the race detector
+reports the write-write race on the score buffer:
+
+```
+go test -race -tags racecontract -run TestContractSearchIsNotConcurrencySafe ./...
+```
+
+It is behind a tag so the default `go test -race ./...` stays green: a suite
+that is red on purpose trains people to ignore the one signal that matters.
 
 ## Why the scan is fast
 
