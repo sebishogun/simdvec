@@ -68,3 +68,37 @@ than it is edited, so Delete compacts.
 The absent-id case is the one worth noting: 97 us at 100,000 rows, which
 is the scan for a matching id and no copying at all. Deleting something
 that is not there costs a walk of the id slice and nothing else.
+
+## Filtered search: the crossover is a tenth, not a fifth
+
+**The question.** A filtered search can score the whole matrix and ignore
+the rows the predicate rejected (masking), or gather the admitted rows and
+score only those (compaction). Masking pays the full scan and no copy;
+compaction pays a copy per admitted row. Which wins depends on
+selectivity, and the plan asked for both to be built and measured.
+
+**Measured**, 100,000 rows x 768 dimensions, Cosine:
+
+    admitted     masked      compacted
+       1%       2.88 ms      0.15 ms     compaction 18.9x
+       5%       2.67 ms      1.41 ms     compaction  1.9x
+      10%       2.85 ms      2.82 ms     level
+      20%       3.11 ms      6.02 ms     masking     1.9x
+      50%       3.31 ms     12.56 ms     masking     3.8x
+     100%       3.82 ms     23.56 ms     masking     6.2x
+
+**Consequence.** `SearchFiltered` picks by selectivity, with the threshold
+at a tenth. The first implementation used a fifth -- a guess -- which
+would have chosen compaction at 15%, where masking is 1.9x faster. The
+benchmark moved it, which is the entire reason the plan asked for two
+implementations instead of one.
+
+Both are kept and both are differential-tested against each other at seven
+selectivities and against an index built from the survivors, because a
+threshold that picks between two implementations hides a divergence in
+whichever one the threshold does not choose.
+
+The shape is worth stating: compaction at 100% costs 6.2x masking, so a
+"gather then score" design that looked obviously better for filtering is
+catastrophic for the unfiltered case. The copy is the whole cost, and it
+scales with what is admitted while the scan does not.

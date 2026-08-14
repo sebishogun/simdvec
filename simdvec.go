@@ -108,6 +108,12 @@ type Index struct {
 	n     int
 
 	scores []float32 // reused across searches
+
+	// Scratch for filtered search: the admitted row list, the gathered
+	// sub-matrix, and its scores. Reused for the same reason scores is.
+	filtered  []int
+	gather    []float32
+	subScores []float32
 }
 
 // New returns an empty index for vectors of the given dimension.
@@ -178,26 +184,46 @@ func (ix *Index) Search(query []float32, k int) ([]Result, error) {
 		k = ix.n
 	}
 
-	q := query
-	if ix.metric == Cosine {
-		// Normalise a copy: a caller's slice is theirs.
-		if cap(ix.scores) < ix.dim {
-			ix.scores = make([]float32, ix.dim)
-		}
-		tmp := ix.scores[:ix.dim:ix.dim]
-		copy(tmp, query)
-		simd.Normalize(tmp)
-		q = tmp
+	scores, err := ix.scoreAll(query)
+	if err != nil {
+		return nil, err
 	}
 
+	return ix.topK(scores, k, ix.metric == Euclidean), nil
+}
+
+// queryFor returns the query the kernels should see: the caller's slice, or a
+// normalised copy of it under Cosine. The copy exists because a caller's slice
+// is theirs -- normalising in place would rewrite their data.
+func (ix *Index) queryFor(query []float32) []float32 {
+	if ix.metric != Cosine {
+		return query
+	}
+	if cap(ix.scores) < ix.dim {
+		ix.scores = make([]float32, ix.dim)
+	}
+	tmp := ix.scores[:ix.dim:ix.dim]
+	copy(tmp, query)
+	simd.Normalize(tmp)
+	return tmp
+}
+
+// scoreAll scores every row against the query, in one matrix-vector product.
+//
+// Both the plain and the filtered searches come through here, so the metric
+// arithmetic has one implementation. Two copies of the Euclidean conversion
+// is precisely the shape of bug that survives review.
+func (ix *Index) scoreAll(query []float32) ([]float32, error) {
+	q := ix.queryFor(query)
 	if cap(ix.scores) < ix.n+ix.dim {
 		ix.scores = make([]float32, ix.n+ix.dim)
+		if ix.metric == Cosine {
+			// The grow moved the buffer the normalised query lives in.
+			q = ix.queryFor(query)
+		}
 	}
 	scores := ix.scores[ix.dim : ix.dim+ix.n]
-
-	// The entire scan, in one call.
 	simd.GemvParallelInto(scores, ix.data, q, ix.n, ix.dim)
-
 	if ix.metric == Euclidean {
 		// |a-b|^2 = |a|^2 - 2a.b + |b|^2. The last term is the same for every
 		// candidate, so it does not affect the ordering and is added back only
@@ -208,11 +234,41 @@ func (ix *Index) Search(query []float32, k int) ([]Result, error) {
 			if d < 0 {
 				d = 0 // rounding, not geometry
 			}
-			scores[i] = float32(math.Sqrt(float64(d)))
+			scores[i] = sqrt32(d)
 		}
 	}
+	return scores, nil
+}
 
-	return ix.topK(scores, k, ix.metric == Euclidean), nil
+func sqrt32(f float32) float32 { return float32(math.Sqrt(float64(f))) }
+
+// topKOf selects the k best among a subset of rows, scoring by the full-length
+// scores slice. It is topK with an explicit candidate list.
+func (ix *Index) topKOf(scores []float32, rows []int, k int, ascending bool) []Result {
+	idx := make([]int, len(rows))
+	copy(idx, rows)
+	cmp := func(a, b int) bool {
+		if scores[a] == scores[b] {
+			return a < b
+		}
+		if ascending {
+			return scores[a] < scores[b]
+		}
+		return scores[a] > scores[b]
+	}
+	quickSelect(idx, k, cmp)
+	sel := idx[:k]
+	sortInts(sel, cmp)
+	out := make([]Result, k)
+	for i, j := range sel {
+		out[i] = Result{ID: ix.ids[j], Score: scores[j]}
+	}
+	return out
+}
+
+// sortInts orders a selected set by the comparator.
+func sortInts(sel []int, less func(a, b int) bool) {
+	sort.Slice(sel, func(a, b int) bool { return less(sel[a], sel[b]) })
 }
 
 // topK selects the k best scores.

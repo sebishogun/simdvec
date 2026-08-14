@@ -142,3 +142,45 @@ func BenchmarkDelete(b *testing.B) {
 		})
 	}
 }
+
+// Masking against compaction across selectivity. Masking pays the full scan
+// and no copy; compaction pays a copy per admitted row and scores only those.
+// Which wins is entirely a function of how much the filter admits, so the
+// crossover is measured rather than guessed.
+func BenchmarkFilterStrategies(b *testing.B) {
+	const dim = 768
+	const n = 100000
+	r := rand.New(rand.NewPCG(4, 5))
+	ix := New(dim, Cosine)
+	vecs := randVecs(r, n, dim)
+	for i, v := range vecs {
+		if err := ix.Add(itoa(i), append([]float32(nil), v...)); err != nil {
+			b.Fatal(err)
+		}
+	}
+	q := randVecs(r, 1, dim)[0]
+
+	for _, pct := range []int{1, 5, 10, 20, 50, 100} {
+		every := 100 / pct
+		var rows []int
+		for i := 0; i < n; i++ {
+			if i%every == 0 {
+				rows = append(rows, i)
+			}
+		}
+		b.Run(fmt.Sprintf("masked/%d%%", pct), func(b *testing.B) {
+			for i := 0; i < b.N; i++ {
+				if _, err := ix.searchMasked(q, 10, rows); err != nil {
+					b.Fatal(err)
+				}
+			}
+		})
+		b.Run(fmt.Sprintf("compacted/%d%%", pct), func(b *testing.B) {
+			for i := 0; i < b.N; i++ {
+				if _, err := ix.searchCompacted(q, 10, rows); err != nil {
+					b.Fatal(err)
+				}
+			}
+		})
+	}
+}
